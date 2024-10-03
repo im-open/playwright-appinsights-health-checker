@@ -1,28 +1,28 @@
 {
-  "name": "ceruleoscope",
-  "version": "0.1.3",
+  "name": "playwright-appinsights-health-checker",
+  "version": "0.2.0",
   "description": "Use Playwright to create availability tests with AppInsights, running on Azure Functions",
   "repository": {
     "type": "git",
-    "url": "https://github.com/microsoft/Ceruleoscope"
+    "url": "https://github.com/im-open/playwright-appinsights-health-checker"
   },
   "main": "./dist/index.js",
   "dependencies": {
-    "@playwright/test": "^1.20.2",
-    "applicationinsights": "^2.1.7",
-    "azure-storage": "^2.10.7",
-    "playwright": "^1.20.2",
-    "playwright-chromium": "^1.20.2"
+    "@playwright/test": "^1.47.2",
+    "applicationinsights": "^3.3.0",
+    "@azure/storage-blob": "^12.25.0",
+    "playwright": "^1.47.2",
+    "playwright-chromium": "^1.47.2"
   },
   "devDependencies": {
-    "typescript": "^4.5.5"
+    "typescript": "^5.6.2"
   },
   "scripts": {
     "build": "tsc",
     "test": "node ./dist/test/tests.js",
     "buildtest": "tsc & node ./dist/test/tests.js"
   },
-  "author": "stpetrov",
+  "author": "wtw",
   "license": "ISC",
   "prettier": {
     "printWidth": 160
