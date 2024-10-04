@@ -1,5 +1,4 @@
 import * as PW from "playwright";
-import aiUtil from "applicationinsights/out/Library/Util";
 import * as AppInsights from "applicationinsights";
 import { SharedOptions } from "./SharedOptions";
 import { PageInsights } from "./PageInsights";
@@ -43,8 +42,8 @@ export class BrowserContextInsights {
     this.storageClient = options?.storageClient;
     this.traceFileName = options?.traceFileName;
     this.harFilePath = options?.harFilePath;
-    this.availabilityTestSpanId = options?.spanId || aiUtil.w3cSpanId();
-    this.availabilityTestOperationId = options?.operationId || aiUtil.w3cTraceId();
+    this.availabilityTestSpanId = options?.spanId || AppInsights.getCorrelationContext().operation.parentId;
+    this.availabilityTestOperationId = options?.operationId || AppInsights.getCorrelationContext().operation.id;
     this.startedAt = new Date();
 
     browserContext.on("page", (page) => {
@@ -154,23 +153,21 @@ export class BrowserContextInsights {
         duration: new Date().getTime() - this.startedAt.getTime(),
         success: !this.errorMessage,
         runLocation: this.runLocation,
-        tagOverrides: {
-          "ai.operation.id": this.availabilityTestOperationId,
-          "ai.operation.parentId": this.availabilityTestSpanId,
-        },
+        // tagOverrides: {
+        //   "ai.operation.id": this.availabilityTestOperationId,
+        //   "ai.operation.parentId": this.availabilityTestSpanId,
+        // },
         properties: {
           traceFileLink: traceFileLink,
           harFileLink: harFileLink,
+          "ai.operation.id": this.availabilityTestOperationId,
+          "ai.operation.parentId": this.availabilityTestSpanId,
         },
       });
 
       this.options?.log("Flushing telemetry");
       await new Promise((resolve, reject) => {
-        this.telemetryClient.flush({
-          callback: (v) => {
-            resolve(v);
-          },
-        });
+        this.telemetryClient.flush().then(resolve).catch(reject);
       });
 
       process.once("beforeExit", async () => await new Promise((resolve) => setTimeout(resolve, 200)));

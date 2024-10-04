@@ -1,5 +1,4 @@
 import * as PW from "playwright";
-import aiUtil from "applicationinsights/out/Library/Util";
 import * as AppInsights from "applicationinsights";
 import { SharedOptions } from "./SharedOptions";
 import { BrowserContextInsights, BrowserContextInsightsOptions } from "./BrowserContextInsights";
@@ -18,6 +17,7 @@ export interface PlaywrightAvailabilityTesterOptions extends SharedOptions {
   storageClientConnectionString?: string;
   disableTrace?: boolean;
   disableHar?: boolean;
+  cloudRoleName?: string;
 }
 
 // Hooks into Playwright's Browser, so that all BrowserContext and Page objects are instrumented to emit telemetry
@@ -45,11 +45,13 @@ export class PlaywrightAvailabilityTester {
           message: args.join(" "),
           properties: {
             emittedBy: "PWAFAT",
-          },
-          tagOverrides: {
             "ai.operation.id": this.availabilityTestOperationId,
             "ai.operation.parentId": this.availabilityTestSpanId,
           },
+          // tagOverrides: {
+          //   "ai.operation.id": this.availabilityTestOperationId,
+          //   "ai.operation.parentId": this.availabilityTestSpanId,
+          // },
         });
 
       options.error = (...args: any[]) => {
@@ -59,11 +61,13 @@ export class PlaywrightAvailabilityTester {
           exception: err,
           properties: {
             emittedBy: "PWAFAT",
-          },
-          tagOverrides: {
             "ai.operation.id": this.availabilityTestOperationId,
             "ai.operation.parentId": this.availabilityTestSpanId,
           },
+          // tagOverrides: {
+          //   "ai.operation.id": this.availabilityTestOperationId,
+          //   "ai.operation.parentId": this.availabilityTestSpanId,
+          // },
         });
       };
     }
@@ -91,10 +95,15 @@ export class PlaywrightAvailabilityTester {
 
         this.storageClient = new StorageClient(storageClientOptions);
       }
+      this.telemetryClient.config.distributedTracingMode = AppInsights.DistributedTracingModes.AI_AND_W3C;
     }
 
-    this.availabilityTestOperationId = aiUtil.w3cTraceId();
-    this.availabilityTestSpanId = aiUtil.w3cSpanId();
+    if(options?.cloudRoleName) {
+      this.telemetryClient.context.tags['ai.cloud.role'] = options.cloudRoleName;
+    }
+
+    this.availabilityTestOperationId = AppInsights.getCorrelationContext().operation?.id;
+    this.availabilityTestSpanId = AppInsights.getCorrelationContext().operation.parentId;
 
     options?.log("Telemetry:", this.telemetryClient?.config.endpointUrl, "Storage:", this.storageClient?.hostName());
   }
