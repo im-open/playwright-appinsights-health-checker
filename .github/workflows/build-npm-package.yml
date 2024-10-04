@@ -1,0 +1,247 @@
+# Workflow Code: GloomyBadger_v35    DO NOT REMOVE
+# Purpose:
+#    Automatically calculates the next semantic version, runs an npm ci, an npm run tests
+#    if there is one, an npm publish and then pushes a latest tag for main builds. When the
+#    PR is merged, the package versions created for each branch commit in the PR are removed.
+#
+# Frequency: This workflow should be duplicated once per npm package in the repository
+#
+# Projects to use this Template with:
+#    - npm Package (Core Template)
+#
+# Prerequisites:
+#    - Update the package.json file required values for GH Packages (name, version, repository, publishConfig.registry)
+#      https://github.com/im-practices/git-er-done/blob/main/packages/publish-npm.md
+#    - This workflow uses the elevated GH_PACKAGES_TOKEN secret to read/write/delete packages. This is an org-level secret but is
+#      only available to select repos.  To use this let a member of SWAT or Infra-Purple know and it can be enabled for your repo.
+
+name: 🏗️ NPM Build
+run-name: 🏗️ NPM Build (${{ github.event.pull_request.title }})
+
+# concurrency:
+#   group: npm-ci-${{ github.ref }}
+#   cancel-in-progress: true
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, closed]
+
+env:
+  TIMEZONE: 'america/denver'
+  REPO_URL: '${{ github.server_url }}/${{ github.repository }}'
+  NODE_VERSION: '20.x'
+  PACKAGE_NAME: 'playwright-appinsights-health-checker'
+
+jobs:
+  # This job utilizes a reusable workflow which will:
+  #   1 - Examine the triggers and set various flags for subsequent jobs to use when evaluating whether to run
+  #   2 - Print a workflow summary
+  #   3 - Generate the next version for the repo
+  setup-build-workflow:
+    uses: ./.github/workflows/reusable-setup-build-workflow.yml
+    with:
+      tag-prefix: 'none'
+      runs-on: ubuntu-latest
+
+  npm-cache:
+    runs-on: ubuntu-latest
+    needs: [setup-build-workflow]
+    # if: needs.setup-build-workflow.outputs.CONTINUE_WORKFLOW == 'true'
+
+    defaults:
+      run:
+        shell: bash
+
+    outputs:
+      NPM_CACHE_KEY: ${{ env.NPM_CACHE_KEY }}
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.examine-triggers.outputs.REF_TO_BUILD_AND_TAG }}
+
+      - name: Set Cache Keys
+        # As long as these files don't change the cache will remain in tact and the time
+        # to restore the different packages in the various jobs will be reduced.  If one
+        # of the files does change though, a new cache will be uploaded the next time
+        # it runs, then subsequent runs should be faster.
+        run: echo "NPM_CACHE_KEY=k6_util_node_modules-${{ hashFiles('**/package-lock.json') }}" >> $GITHUB_ENV
+
+      - name: Check for an npm cache
+        id: has-cache
+        uses: actions/cache@v4
+        with:
+          lookup-only: true
+          path: |
+            **/node_modules
+          key: ${{ env.NPM_CACHE_KEY }}
+
+      # The remaining steps will only be executed if the cache was not found, otherwise they will be skipped.
+      - name: Setup Node
+        if: steps.has-cache.outputs.cache-hit != 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          registry-url: https://npm.pkg.github.com/
+
+      - name: NPM CI
+        if: steps.has-cache.outputs.cache-hit != 'true'
+        run: |
+          echo "Installing NPM for Frontend Folder"
+          npm ci
+
+      # This action creates a post-job step that will upload the node_modules dir to the cache if the job
+      # completes successfully.  Subsequent jobs and workflow runs can use this cached version of the node_modules
+      # folder if the package-lock.json hasn't changed and it uses a ubuntu-20.04 runner to restore the cache from.
+      - name: Save cache for node_modules directory
+        if: steps.has-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          key: ${{ env.NPM_CACHE_KEY }}
+          enableCrossOsArchive: true
+          path: |
+            **/node_modules
+  
+  build-and-publish-to-gpr:
+    runs-on: ubuntu-latest
+    needs: [setup-build-workflow, npm-cache]
+    if: needs.setup-build-workflow.outputs.CONTINUE_WORKFLOW == 'true'
+
+    env:
+      NEXT_VERSION: ${{ needs.setup-build-workflow.outputs.NEXT_VERSION_NO_PREFIX }}
+      NEXT_VERSION_NO_PRERELEASE: ${{ needs.setup-build-workflow.outputs.NEXT_VERSION_NO_PREFIX_NO_PRERELEASE }}
+      IS_PRERELEASE: ${{ needs.setup-build-workflow.outputs.IS_PRERELEASE }}
+      CREATE_RELEASE: ${{ needs.setup-build-workflow.outputs.CREATE_RELEASE }}
+      DIST_TAG: ${{ needs.setup-build-workflow.outputs.DIST_TAG }}
+      REF_TO_BUILD_AND_TAG: ${{ needs.setup-build-workflow.outputs.REF_TO_BUILD_AND_TAG }}
+
+    outputs:
+      PACKAGE_NAME: ${{ steps.set-package-name.outputs.PACKAGE_NAME }}
+
+    defaults:
+      run:
+        shell: bash
+        working-directory: './'
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ env.REF_TO_BUILD_AND_TAG }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          registry-url: https://npm.pkg.github.com/
+
+      - name: Download npm cache
+        id: restore-npm-cache
+        uses: actions/cache/restore@v4
+        with:
+          key: ${{ needs.npm-cache.outputs.NPM_CACHE_KEY }}
+          enableCrossOsArchive: true
+          fail-on-cache-miss: true
+          path: |
+            **/node_modules
+
+      - name: NPM Version Pre-Publish
+        run: |
+          echo "Bumping package.json version to ${{ env.NEXT_VERSION }}"
+          npm version ${{ env.NEXT_VERSION }} --no-git-tag-version
+          echo "Checking Package Json Version"
+          cat package.json | grep version
+    
+      - name: reset .npmrc for publishing
+        run: npm set //npm.pkg.github.com/:_authToken '${{ secrets.GITHUB_TOKEN }}'
+
+      - name: Rebuild Node Modules
+        if: steps.restore-npm-cache.outputs.cache-hit == 'true'
+        run: npm rebuild
+
+      # - name: Run Tests
+      #   run: npm run tests
+
+      - name: NPM Publish
+        if: steps.restore-npm-cache.outputs.cache-hit == 'true'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Special per-job token generated by GH for interacting with the repo
+        run: npm publish --tag ${{ env.DIST_TAG }}
+
+      - name: NPM Version Post Publish
+        continue-on-error: true
+        run: |
+          echo "Bumping package.json version to ${{ env.NEXT_VERSION_NO_PRERELEASE }}"
+          npm version ${{ env.NEXT_VERSION_NO_PRERELEASE }} --no-git-tag-version
+          echo "Checking Package Json Version"
+          cat package.json | grep version
+
+          git_package_json_status=$(git status --porcelain | grep 'package.json')
+          if [[ "$git_package_json_status" != "" ]]; then
+            echo "Update package.json version to ${{ env.NEXT_VERSION_NO_PRERELEASE }} and push to ${{ env.REF_TO_BUILD_AND_TAG }}"
+            git config user.name github-actions
+            git config user.email github-actions@github.com
+            git add package.json
+            git commit -m "Bump npm package.json version to ${{ env.NEXT_VERSION_NO_PRERELEASE }}"
+            git push origin ${{ env.REF_TO_BUILD_AND_TAG }}
+          else
+            echo "Package.json version is already at ${{ env.NEXT_VERSION_NO_PRERELEASE }}"
+          fi
+
+      - name: Create GitHub Tag and Release
+        if: env.CREATE_RELEASE == 'true'
+        id: create_release
+        uses: im-open/create-release@v3.2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }} # Special per-job token generated by GH for interacting with the repo
+          delete-existing-release: true # Handy when you hit 're-run jobs' on a workflow run
+          tag-name: ${{ env.NEXT_VERSION }}
+          prerelease: ${{ env.IS_PRERELEASE }}
+          commitish: ${{ env.REF_TO_BUILD_AND_TAG }}
+
+      - name: Set Package Name Output
+        id: set-package-name
+        run: echo "PACKAGE_NAME=${{ env.PACKAGE_NAME }}" >> $GITHUB_OUTPUT
+
+  cleanup-prereleases:
+    if: always() && github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    needs: [setup-build-workflow]
+    steps:
+      - name: Cleanup the branch pre-releases for all closed PRs
+        uses: im-open/delete-prereleases-for-branch@v1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          branch-name: ${{ github.head_ref }}
+
+      - name: Cleanup pre-release packages
+        if: always()
+        uses: im-open/delete-branch-package-versions@v3
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }} # This is a special org-level secret that needs to be authorized for this repo
+          organization: ${{ github.repository_owner }}
+          branch-name: ${{ github.head_ref }}
+          package-type: 'npm'
+          package-names: '${{ env.PACKAGE_NAME }}'
+
+  # This job utilizes a reusable workflow which will:
+  #   1 - Send a status to a teams channel
+  #   2 - Add a comment to the PR with the status/next version
+  #   3 - Check for workflow failures
+  finish-build:
+    if: always() && needs.setup-build-workflow.outputs.CONTINUE_WORKFLOW == 'true'
+    needs: [setup-build-workflow, npm-cache, build-and-publish-to-gpr]
+    uses:  ./.github/workflows/reusable-finish-build-workflow.yml
+    with:
+      runs-on: ubuntu-latest
+      next-version: ${{ needs.setup-build-workflow.outputs.NEXT_VERSION }}
+      title-of-teams-post: 'Build and Publish ${{ needs.build-and-publish-to-gpr.outputs.PACKAGE_NAME }} to GH Packages'
+      is-merge-to-main: ${{ needs.setup-build-workflow.outputs.IS_MERGE_TO_MAIN }}
+      send-teams-notification: false
+      ms-teams-uri: '1233124'
+      additional-pr-comment-content: |
+        - To test this version try running:
+          ```bash
+          npm install @im-open/${{ needs.build-and-publish-to-gpr.outputs.PACKAGE_NAME }}@${{ needs.setup-build-workflow.outputs.NEXT_VERSION }}
+          ```

@@ -1,29 +1,32 @@
 {
-  "name": "playwright-appinsights-health-checker",
-  "version": "0.2.0",
+  "name": "@im-open/playwright-appinsights-health-checker",
+  "version": "0.2.1",
   "description": "Use Playwright to create availability tests with AppInsights, running on Azure Functions",
+  "author": "wtw",
+  "license": "ISC",
   "repository": {
     "type": "git",
-    "url": "https://github.com/im-open/playwright-appinsights-health-checker"
+    "url": "git+https://github.com/im-open/playwright-appinsights-health-checker.git"
   },
   "main": "./dist/index.js",
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "scripts": {
+    "build": "tsc --project tsconfig.json",
+    "test": "node ./dist/test/tests.js",
+    "buildtest": "tsc --project tsconfig.json & node ./dist/test/tests.js"
+  },
   "dependencies": {
-    "@playwright/test": "^1.47.2",
     "applicationinsights": "^3.3.0",
     "@azure/storage-blob": "^12.25.0",
     "playwright": "^1.47.2",
-    "playwright-chromium": "^1.47.2"
+    "playwright-chromium": "^1.47.2",
+    "@playwright/test": "^1.47.2"
   },
   "devDependencies": {
     "typescript": "^5.6.2"
   },
-  "scripts": {
-    "build": "tsc",
-    "test": "node ./dist/test/tests.js",
-    "buildtest": "tsc & node ./dist/test/tests.js"
-  },
-  "author": "wtw",
-  "license": "ISC",
   "prettier": {
     "printWidth": 160
   }

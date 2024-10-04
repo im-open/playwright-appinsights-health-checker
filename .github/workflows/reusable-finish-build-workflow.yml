@@ -1,0 +1,230 @@
+# The purpose of this reusable job is to run the final steps of a CI build workflow
+# which includes posting a status to teams, updating a PR comment and setting the final
+# workflow outcome.
+
+# Example Usage in a repo's workflow:
+# jobs:
+#  setup-deployment-workflow:
+#    uses: im-practices/.github/.github/workflows/im-reusable-finish-build-workflow.yml@v3
+#    with:
+#      runs-on: im-linux
+#      next-version: ${{ needs.build-deployment-artifacts.outputs.NEXT_VERSION }}
+#      title-of-teams-post: 'My CI Build'
+#      is-merge-to-main: ${{ needs.examine-triggers.outputs.IS_MERGE_TO_MAIN }}
+#      timezone: america/denver
+#      additional-conclusions |
+#        [
+#          { "name": "dotnet test", "conclusion" : "${{ needs.dotnet-build-and-test.outputs.test }}" },
+#          { "name": "dotnet coverage", "conclusion" : "${{ needs.dotnet-build-and-test.outputs.coverage }}" }
+#        ]
+#      additional-pr-comment-content |
+#        - To test this version try running:
+#          ```bash
+#          npm install @<org>/<package-name>@${{ needs.build-deployment-artifacts.outputs.NEXT_VERSION }}
+#          ```
+#      custom-facts-for-team-channel |
+#        [
+#          { "name": "Workflow", "value": "${{ github.workflow }}" },
+#          { "name": "Run", "value": "${{ github.run_id }}" },
+#          { "name": "Actor", "value": "${{ github.actor }}" },
+#          { "name": "Version", "value": "${{ needs.build-deployment-artifacts.outputs.NEXT_VERSION }}" }
+#        ]
+#      ms-teams-uri: ${{ vars.MS_TEAMS_URI }}  # Use this input (preferred) or the secret
+
+on:
+    workflow_call:
+      inputs:
+        runs-on:
+          description: 'The runner that this workflow will run on.'
+          required: false
+          type: string
+          default: 'im-linux'
+        next-version:
+          description: The next generated version
+          type: string
+          required: false
+          default: 'N/A'
+        title-of-teams-post:
+          description: 'Title of the Teams post that reports the build status.'
+          required: true
+          type: string
+        is-merge-to-main:
+          description: Flag indicating whether this is a merge to the default branch. Expected `true` or `false`.
+          required: true
+          type: string
+        timezone:
+          description: 'Timezone for the project.  Defaults to america/denver.'
+          required: false
+          type: string
+          default: 'america/denver'
+        additional-conclusions:
+          description: Valid JSON array of additional conclusion items that should be used to determine if the workflow succeeded or failed
+          required: false
+          type: string
+          default: ''
+        additional-pr-comment-content:
+          description: Additional PR comment content aside from workflow run and next version.
+          required: false
+          type: string
+        send-teams-notification:
+          description: Flag indicating whether to send a notification to the team's channel.  Expected `true` or `false`.
+          required: false
+          type: boolean
+          default: false
+        custom-facts-for-team-channel:
+          description: The custom facts that will be included in the post in the team's channel.  By default Workflow, Run, Actor and Version are included.
+          required: false
+          type: string
+        custom-actions-for-team-channel:
+          description: The custom action that will be included in the post in the team's channel.
+          required: false
+          type: string
+        ms-teams-uri:
+          description: The URI for the teams channel where a status will be posted.  Either this value or the secret MS_TEAMS_URI must be provided.  This input is the preferred way to provide the URI but the secret should be used instead if the value is defined as a secret.
+          required: false
+          type: string
+  
+      secrets:
+        MS_TEAMS_URI:
+          description: The URI for the teams channel where a status will be posted.  Either this value or the input ms-teams-uri must be provided.  The input is the preferred way to provide the URI but the secret should be used if the value is defined as a secret.
+          required: false
+  
+jobs:
+  finish-build:
+    runs-on: ${{ inputs.runs-on }}
+
+    steps:
+      - name: Check for missing inputs
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // Some teams have these as a secret and some as a var, allow both ways but check at least one is present
+            const teamsUri = '${{ inputs.ms-teams-uri || secrets.MS_TEAMS_URI }}';
+            if (!teamsUri || teamsUri.trim().length === 0){
+              core.setFailed('The MS_TEAMS_URI secret or the ms-teams-uri input (preferred) must be provided.');
+            }
+
+      - name: Print inputs
+        uses: actions/github-script@v7
+        with:
+          script: |
+            function printInput(inputName, inputValue, isMultilineInput){
+                if (!inputValue || inputValue.trim().length === 0){
+                core.info(`${inputName}: Not Provided`);
+              } else if (isMultilineInput){
+                console.log(`\n${inputName}:\n${inputValue}`);
+              }
+              else {
+                core.info(`${inputName}: ${inputValue}`);
+              }
+            }
+
+            core.startGroup('Reusable workflow inputs');
+            printInput('runs-on', '${{ inputs.runs-on }}');
+            printInput('next-version', '${{ inputs.next-version }}');
+            printInput('title-of-teams-post', '${{ inputs.title-of-teams-post }}');
+            printInput('is-merge-to-main', '${{ inputs.is-merge-to-main }}');
+            printInput('timezone', '${{ inputs.timezone }}');
+            printInput('ms-teams-uri', '${{ inputs.ms-teams-uri }}');
+            printInput('send-teams-notification', '${{ inputs.send-teams-notification }}');
+            printInput('custom-facts-for-team-channel', process.env.FACTS, true);
+            printInput('custom-actions-for-team-channel', process.env.ACTION, true);
+            printInput('additional-pr-comment-content', process.env.ADDITIONAL_CONTENT, true);
+            printInput('additional-conclusions', process.env.ADDITIONAL_CONCLUSIONS, true);
+            core.endGroup();
+
+            core.startGroup('Reusable workflow secrets');
+            printInput('MS_TEAMS_URI', '${{ secrets.MS_TEAMS_URI }}');
+            core.endGroup();
+        env:
+          FACTS: ${{ inputs.custom-facts-for-team-channel }}
+          ADDITIONAL_CONTENT: ${{ inputs.additional-pr-comment-content }}
+          ADDITIONAL_CONCLUSIONS: ${{ inputs.additional-conclusions }}
+          ACTION: ${{ inputs.custom-actions-for-team-channel }}
+
+      - uses: im-open/workflow-conclusion@v2.2
+        id: conclusion
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }} # Special per-job token generated by GH for interacting with the repo
+          additional-conclusions: ${{ inputs.additional-conclusions }}
+
+      - name: Configure facts for team's notification channel
+        if: always()
+        id: team-channel-facts
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const rawFacts = process.env.FACTS;
+            console.log(`"${rawFacts}"`);
+            let facts = rawFacts && rawFacts.trim().length > 0 ? JSON.parse(rawFacts) : null;
+
+            if (!facts || facts.length === 0){
+              console.log(`Custom facts were not provided for the Team's Notification channel, use the default facts:`);
+              facts = [
+                { name: 'Workflow', value: '${{ github.workflow }}'},
+                { name: 'Run', value: '${{ github.run_id }}'},
+                { name: 'Actor', value: '${{ github.actor }}'},
+                { name: 'Version', value: '${{ inputs.next-version }}'}
+              ]
+            }
+            else {
+              console.log(`Custom facts were supplied as an argument, using those in the Team's Notification channel:`);
+            }
+
+            console.log(facts);
+            core.setOutput('facts', facts);
+        env:
+          FACTS: ${{ inputs.custom-facts-for-team-channel }}
+
+      - name: Send status to team's notification channel
+        if: always() && inputs.send-teams-notification
+        continue-on-error: true
+        uses: im-open/post-status-to-teams-action@v1.4
+        with:
+          title: ${{ inputs.title-of-teams-post }}
+          workflow-status: ${{ steps.conclusion.outputs.workflow_conclusion }}
+          workflow-type: Build
+          teams-uri: ${{ inputs.ms-teams-uri || secrets.MS_TEAMS_URI }}
+          timezone: ${{ inputs.timezone }}
+          custom-facts: ${{ steps.team-channel-facts.outputs.facts }}
+          custom-actions: ${{ inputs.custom-actions-for-team-channel }}
+
+      - name: Construct PR Comment
+        id: comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const isMergeToMain = '${{ inputs.is-merge-to-main }}' == 'true';
+            const nextVersion = '${{ inputs.next-version }}';
+            const orgAndRepo = '${{ github.repository }}';
+            const conclusion = '${{ steps.conclusion.outputs.workflow_conclusion }}';
+            const runId = '${{ github.run_id }}';
+
+            const workflowRunText = `[Workflow Run - ${conclusion}](https://github.com/${orgAndRepo}/actions/runs/${runId})`;
+
+            const nextVersionText = isMergeToMain ?
+              `[Tag - ${nextVersion}](https://github.com/${orgAndRepo}/releases/tag/${nextVersion})` :
+              `Next Version - ${nextVersion}`;
+
+            const prComment = `
+            - ${workflowRunText}
+            - ${nextVersionText}
+            ${process.env.ADDITIONAL_CONTENT}`
+            core.setOutput('prComment', prComment);
+        env:
+          ADDITIONAL_CONTENT: ${{ inputs.additional-pr-comment-content }}
+
+      - name: Comment on PR with version ${{ inputs.next-version}}
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        uses: im-open/update-pr-comment@v1.2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }} # Special per-job token generated by GH for interacting with the repo
+          comment-identifier: next-release-version
+          comment-content: ${{ steps.comment.outputs.prComment }}
+
+      - name: Check for Workflow Failures
+        if: steps.conclusion.outputs.workflow_conclusion == 'failure'
+        run: |
+          echo "There were errors in the workflow.  Check the workflow-conclusion step above for more details on what failed."
+          exit 1

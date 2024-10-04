@@ -1,5 +1,4 @@
 import * as PW from "playwright";
-import aiUtil from "applicationinsights/out/Library/Util";
 import * as AppInsights from "applicationinsights";
 import { SharedOptions } from "./SharedOptions";
 
@@ -27,7 +26,7 @@ export class PageInsights {
     this.telemetryClient = telemetryClient;
     this.page = page;
     this.operationId = operationId;
-    this.pageViewSpanId = aiUtil.w3cSpanId();
+    this.pageViewSpanId = AppInsights.getCorrelationContext().operation.id;
     this.parentSpanId = parentSpanId;
     this.openedAt = new Date();
 
@@ -90,7 +89,7 @@ export class PageInsights {
     let headers = request.headers();
     if (!headers[PageInsights.traceparentHeaderName] && !headers[PageInsights.requestIdHeaderName]) {
       // if the request had no trace context - add the availability test's context in w3c format
-      let dependencySpanId = aiUtil.w3cSpanId();
+      let dependencySpanId = AppInsights.getCorrelationContext().operation.parentId;
       headers[PageInsights.traceparentHeaderName] = `00-${this.operationId}-${dependencySpanId}-01`;
       this.options?.log("Added 'traceparent' header:", headers[PageInsights.traceparentHeaderName]);
       return route.continue({ headers });
@@ -161,7 +160,7 @@ export class PageInsights {
     }
 
     if (!dependencySpanId || pageOperationId != this.operationId) {
-      dependencySpanId = aiUtil.w3cSpanId();
+      dependencySpanId = AppInsights.getCorrelationContext().operation.traceparent?.toString().substr(36, 16);
     }
 
     this.telemetryClient.trackDependency({
@@ -185,10 +184,10 @@ export class PageInsights {
       ),
       target: depUrl.host.toString(),
       properties: customDimensions,
-      tagOverrides: {
-        "ai.operation.id": this.operationId,
-        "ai.operation.parentId": this.pageViewSpanId,
-      },
+      // tagOverrides: {
+      //   "ai.operation.id": this.operationId,
+      //   "ai.operation.parentId": this.pageViewSpanId,
+      // },
     });
 
     this.options?.log(`Dependency reported:`, `id: ${dependencySpanId} operation.id: ${this.operationId} parentId: ${this.pageViewSpanId}`, dependencyUrl);
@@ -198,7 +197,7 @@ export class PageInsights {
     if (!this.isPageViewReported) {
       this.isPageViewReported = true;
 
-      let dependencyTelemetry: AppInsights.Contracts.DependencyTelemetry & AppInsights.Contracts.Identified = {
+      let dependencyTelemetry: AppInsights.Contracts.DependencyTelemetry & AppInsights.Contracts.PageViewTelemetry = {
         id: this.pageViewSpanId,
         name: "PAGE: " + this.host,
         data: this.page.url(),
@@ -208,10 +207,10 @@ export class PageInsights {
         resultCode: 200,
         dependencyTypeName: "InProc",
         target: this.host,
-        tagOverrides: {
-          "ai.operation.id": this.operationId,
-          "ai.operation.parentId": this.parentSpanId,
-        },
+        // tagOverrides: {
+        //   "ai.operation.id": this.operationId,
+        //   "ai.operation.parentId": this.parentSpanId,
+        // },
       };
 
       if (this.errorMessage) {
@@ -275,7 +274,7 @@ export class PageInsights {
       }
     }
 
-    if (telemetryClient && page.url && operationId && parentSpanId) {
+    if (telemetryClient && page.url() && operationId && parentSpanId) {
       let pageOptions: PageInsightsOptions | undefined = undefined;
       if (options) {
         pageOptions = {

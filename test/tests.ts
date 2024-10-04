@@ -13,12 +13,12 @@ let aiLogs: any[] = [];
 (async () => {
   let appInsights = require("applicationinsights");
   appInsights
-    .setup("12341234-1234-dd4e-1234-123412341234") // fake ikey
+    .setup("InstrumentationKey=12341234-1234-dd4e-1234-123412341234;IngestionEndpoint=https://westus2-0.in.applicationinsights.azure.com/;LiveEndpoint=https://westus2.livediagnostics.monitor.azure.com/;ApplicationId=16-e7e626-32ee-413e-bad7-1475dee427bb")
     .setDistributedTracingMode(appInsights.DistributedTracingModes.AI_AND_W3C)
     .setUseDiskRetryCaching(false);
 
   // don't send any telemetry remotely
-  appInsights.defaultClient.channel.send = function () {};
+  appInsights.defaultClient.send = function () {};
 
   // capture appInsights logs for inspection
   appInsights.defaultClient.track = function (...args: any) {
