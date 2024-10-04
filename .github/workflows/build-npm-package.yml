@@ -147,6 +147,7 @@ jobs:
             **/node_modules
 
       - name: NPM Version Pre-Publish
+        continue-on-error: true
         run: |
           echo "Bumping package.json version to ${{ env.NEXT_VERSION }}"
           npm version ${{ env.NEXT_VERSION }} --no-git-tag-version
