@@ -18,9 +18,9 @@
 name: 🏗️ NPM Build
 run-name: 🏗️ NPM Build (${{ github.event.pull_request.title }})
 
-# concurrency:
-#   group: npm-ci-${{ github.ref }}
-#   cancel-in-progress: true
+concurrency:
+  group: npm-ci-${{ github.ref }}
+  cancel-in-progress: true
 
 on:
   pull_request:
