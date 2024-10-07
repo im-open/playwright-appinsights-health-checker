@@ -13,7 +13,7 @@
 #     workflow-summary: |
 #       |Workflow Item | Value|
 #       |Actor | ${{ github.actor }} |
-
+name: Reusable Setup Build Workflow
 on:
   workflow_call:
     inputs:
