@@ -30,7 +30,7 @@
 #          { "name": "Version", "value": "${{ needs.build-deployment-artifacts.outputs.NEXT_VERSION }}" }
 #        ]
 #      ms-teams-uri: ${{ vars.MS_TEAMS_URI }}  # Use this input (preferred) or the secret
-
+name: Reusable Finish Build Workflow
 on:
     workflow_call:
       inputs:
