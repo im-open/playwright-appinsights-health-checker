@@ -136,7 +136,6 @@ FakesAssemblies/
 node_modules/
 .vscode/
 test/
-dist/test/
 .gitignore
 .npmignore
 *.ts
