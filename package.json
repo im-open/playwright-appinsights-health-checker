@@ -1,6 +1,6 @@
 {
   "name": "@im-open/playwright-appinsights-health-checker",
-  "version": "0.2.2",
+  "version": "0.2.2-SRE-208-Updating-To-Latest-V4.241014224601",
   "description": "Use Playwright to create availability tests with AppInsights, running on Azure Functions",
   "author": "wtw",
   "license": "ISC",
