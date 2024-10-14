@@ -136,7 +136,6 @@ FakesAssemblies/
 node_modules/
 .vscode/
 test/
-dist/test/
 .gitignore
 .npmignore
 *.ts
@@ -147,3 +146,4 @@ CODE_OF_CONDUCT.md
 tsconfig.json
 local.settings.json
 local.settings.json_template
+.github/

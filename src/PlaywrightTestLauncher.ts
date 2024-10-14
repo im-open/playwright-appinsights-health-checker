@@ -4,13 +4,14 @@ import { appInsightsAvailabilityTesterTag } from "./AppInsightsAvailabilityFixtu
 export class PlaywrightTestLauncher {
   public static async Run(): Promise<string> {
     let responseMessage = "start";
+    let AI_CONNECTION = process.env.APPINSIGHTS_INSTRUMENTATIONKEY || process.env.APPLICATIONINSIGHTS_CONNECTION_STRING;
     try {
       if (process.env.AZURE_FUNCTIONS_ENVIRONMENT != "Development") {
         if (!process.env.PLAYWRIGHT_BROWSERS_PATH || !process.env.PLAYWRIGHT_BROWSERS_PATH.startsWith("/home")) {
           console.error("PLAYWRIGHT_BROWSERS_PATH value not as expected:", process.env.PLAYWRIGHT_BROWSERS_PATH, "tests may not run");
         }
-        if (!process.env.APPINSIGHTS_INSTRUMENTATIONKEY && !process.env.APPLICATIONINSIGHTS_CONNECTION_STRING) {
-          console.error("AppInsights ikey and connection string not as set, telemetry will not be emitted");
+        if (!AI_CONNECTION) {
+          console.error("AppInsights ikey or connection string not set, telemetry will not be emitted");
         }
         if (!process.env.AzureWebJobsStorage) {
           console.error("AzureWebJobsStorage not set, test data will not be persisted in Azure Storage");
