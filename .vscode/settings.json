@@ -2,4 +2,11 @@
   "terminal.integrated.scrollback": 100000,
   "editor.formatOnSave": false,
   "yaml.format.singleQuote": true,
+  "[yaml]": {
+    "editor.defaultFormatter": "redhat.vscode-yaml"
+  },
+  "[github-actions-workflow]": {
+    "editor.defaultFormatter": "bluebrown.yamlfmt",
+    "editor.formatOnSave": true
+  },
 }

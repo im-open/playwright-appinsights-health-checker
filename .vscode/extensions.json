@@ -3,6 +3,7 @@
     "ms-azuretools.vscode-azurefunctions",
     "EditorConfig.EditorConfig",
     "redhat.vscode-yaml",
+    "bluebrown.yamlfmt",
     "ms-playwright.playwright"
   ]
 }
